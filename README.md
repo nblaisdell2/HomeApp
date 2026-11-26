@@ -123,12 +123,15 @@ Postgres in the same project over private networking. Railway builds `api/` on e
 that touches `api/**`, runs `npm run migrate:prod` before each deploy, and health-checks `/health`.
 These settings live on the service in the Railway dashboard (Settings tab), not in a file.
 
-Issue a production device key from your PC:
+Live at `https://api-production-1922fbe1.up.railway.app` (`/health` is public; everything under
+`/v1` needs a device key). The Postgres service has no public address. Production keys are issued
+by running the script inside the deployed API container:
 
 ```powershell
-cd api
-railway link                                   # once: pick the Home project and the API service
-railway run --service Postgres -- cmd /c "set DATABASE_URL=%DATABASE_PUBLIC_URL%&& npm run issue-key -- --name tablet"
+cd api; railway link        # once: project home-app, environment production, service api
+cd ..
+.\scripts\issue-prod-key.ps1 -Name tablet
+.\scripts\set-device-key.ps1 -Release -Key home_...
 ```
 
 ## Changing the API
