@@ -118,9 +118,10 @@ That rule only applies to installing APK files on the device itself.
 
 ## Deployment (Railway)
 
-The API runs on Railway as an always-on service with a managed Postgres in the same project
-(private networking). Railway builds `api/` on every push to `main`, runs migrations before each
-deploy (`api/railway.json`), and health-checks `/health`.
+The API runs on Railway (project `home-app`) as an always-on service, `api`, with a managed
+Postgres in the same project over private networking. Railway builds `api/` on every push to `main`
+that touches `api/**`, runs `npm run migrate:prod` before each deploy, and health-checks `/health`.
+These settings live on the service in the Railway dashboard (Settings tab), not in a file.
 
 Issue a production device key from your PC:
 
