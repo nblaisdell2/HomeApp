@@ -1,0 +1,6 @@
+# Files from the generator that the app doesn't use. We build our own Retrofit/OkHttp client
+# (data/remote + di/NetworkModule), and the SSE stream is read with okhttp-sse (data/sync/LiveUpdates).
+**/infrastructure/ApiClient.kt
+**/infrastructure/ResponseExt.kt
+**/auth/**
+**/api/EventsApi.kt

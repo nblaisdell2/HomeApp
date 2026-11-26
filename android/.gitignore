@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration (SDK path, signing secrets)
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# Android Studio / IntelliJ (keep shared code style & run configs, ignore user state)
+*.iml
+.idea/*
+!.idea/codeStyles/
+!.idea/runConfigurations/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Misc
+*.apk
+*.aab
+*.hprof
+.DS_Store

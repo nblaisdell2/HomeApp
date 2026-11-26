@@ -1,0 +1,44 @@
+{
+  "name": "home-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend API for the Home app (Fastify + PostgreSQL)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "migrate": "tsx src/scripts/migrate.ts up",
+    "migrate:down": "tsx src/scripts/migrate.ts down",
+    "migrate:prod": "node dist/scripts/migrate.js up",
+    "issue-key": "tsx src/scripts/issue-key.ts",
+    "revoke-key": "tsx src/scripts/revoke-key.ts",
+    "openapi:export": "tsx src/scripts/export-openapi.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/postgres": "^6.1.2",
+    "@fastify/sensible": "^6.0.8",
+    "@fastify/swagger": "^9.9.5",
+    "@fastify/swagger-ui": "^6.1.5",
+    "@fastify/type-provider-typebox": "^6.3.0",
+    "close-with-grace": "^2.5.0",
+    "fastify": "^5.12.8",
+    "fastify-plugin": "^6.0.1",
+    "node-pg-migrate": "^9.0.0",
+    "pg": "^8.23.1",
+    "typebox": "^1.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/pg": "^8.23.1",
+    "pino-pretty": "^13.2.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}
