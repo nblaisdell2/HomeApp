@@ -18,6 +18,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.filled.Add
@@ -33,6 +35,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nblaisdell.home.data.repository.ShoppingListItem
+import com.nblaisdell.home.data.repository.StoreOption
 import com.nblaisdell.home.data.sync.SyncStatus
 import com.nblaisdell.home.ui.components.EmptyState
 import com.nblaisdell.home.ui.components.HomeScreenScaffold
@@ -60,29 +63,59 @@ fun ShoppingContent(
             AddItemRow(onAdd)
             when {
                 state.loading -> LoadingState()
-                state.items.isEmpty() -> EmptyState(
+                state.isEmpty -> EmptyState(
                     title = "Nothing on the list",
                     message = "Items added here show up on your other device too.",
                     icon = Icons.Outlined.ShoppingCart,
                 )
                 else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(state.items, key = { it.id }) { item ->
-                        ListItem(
-                            headlineContent = { Text(item.name) },
-                            supportingContent = item.note?.let { { Text(it) } },
-                            trailingContent = {
-                                IconButton(onClick = { onDelete(item.id) }) {
-                                    Icon(Icons.Outlined.Delete, contentDescription = "Remove ${item.name}")
-                                }
-                            },
-                        )
-                        HorizontalDivider()
+                    state.groups.forEach { group ->
+                        stickyHeader(key = "header-${group.storeId}") { StoreHeader(group) }
+                        items(group.items, key = { it.id }) { item ->
+                            ListItem(
+                                headlineContent = { Text(item.name) },
+                                supportingContent = item.details()?.let { { Text(it) } },
+                                trailingContent = {
+                                    IconButton(onClick = { onDelete(item.id) }) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = "Remove ${item.name}")
+                                    }
+                                },
+                            )
+                            HorizontalDivider()
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/** Sticky section header naming the store and how many items to get there. */
+@Composable
+internal fun StoreHeader(group: ShoppingGroup) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(horizontal = HomeTheme.spacing.medium, vertical = HomeTheme.spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                group.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "${group.items.size}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Second line of a row: quantity/notes and aisle, e.g. "2 gallons · Aisle 4". */
+internal fun ShoppingListItem.details(): String? =
+    listOfNotNull(note, aisle?.let { "Aisle $it" }).joinToString(" · ").ifEmpty { null }
 
 @Composable
 private fun AddItemRow(onAdd: (String, String?) -> Unit) {
@@ -130,9 +163,13 @@ private fun ShoppingPreview() {
         ShoppingContent(
             ShoppingUiState(
                 loading = false,
-                items = listOf(
-                    ShoppingListItem("1", "Milk", note = "2 gallons"),
-                    ShoppingListItem("2", "Coffee filters"),
+                groups = groupForDisplay(
+                    listOf(
+                        ShoppingListItem("1", "Milk", "aldi", aisle = "4", note = "2 gallons"),
+                        ShoppingListItem("2", "Eggs", "aldi", aisle = "4"),
+                        ShoppingListItem("3", "Coffee filters"),
+                    ),
+                    listOf(StoreOption("aldi", "Aldi")),
                 ),
                 syncStatus = SyncStatus.Live,
             ),
