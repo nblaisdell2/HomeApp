@@ -3,6 +3,17 @@ package com.nblaisdell.home.ui.screens.shopping
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.outlined.ShoppingCartCheckout
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -73,6 +84,10 @@ fun ShoppingScreen(onOpenStores: () -> Unit = {}, viewModel: ShoppingViewModel =
             onDelete = viewModel::delete,
             onRestore = viewModel::restore,
             onOpenStores = onOpenStores,
+            onStartShopping = viewModel::startShopping,
+            onStopShopping = viewModel::stopShopping,
+            onFilter = viewModel::setFilter,
+            onPurchase = viewModel::purchase,
         ),
     )
 }
@@ -84,6 +99,10 @@ data class ShoppingActions(
     val onDelete: (ids: List<String>) -> Unit = {},
     val onRestore: (ids: List<String>) -> Unit = {},
     val onOpenStores: () -> Unit = {},
+    val onStartShopping: () -> Unit = {},
+    val onStopShopping: () -> Unit = {},
+    val onFilter: (StoreFilter) -> Unit = {},
+    val onPurchase: (id: String) -> Unit = {},
 )
 
 @Composable
@@ -94,7 +113,7 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
     var selectedIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val allItems = state.groups.flatMap { it.items }
     val selected = selectedIds.filter { id -> allItems.any { it.id == id } }.toSet()
-    val selecting = selected.isNotEmpty()
+    val selecting = selected.isNotEmpty() && !state.shopping
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -120,18 +139,30 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
     }
 
     BackHandler(enabled = selecting) { selectedIds = emptyList() }
+    BackHandler(enabled = state.shopping) { actions.onStopShopping() }
+    if (state.shopping) KeepScreenOn()
 
     HomeScreenScaffold(
-        title = if (selecting) "${selected.size} selected" else "Shopping",
+        title = when {
+            selecting -> "${selected.size} selected"
+            state.shopping -> "Shopping mode"
+            else -> "Shopping"
+        },
         navigationIcon = {
             if (selecting) {
                 IconButton(onClick = { selectedIds = emptyList() }) {
                     Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
                 }
+            } else if (state.shopping) {
+                IconButton(onClick = actions.onStopShopping) {
+                    Icon(Icons.Filled.Close, contentDescription = "Exit shopping mode")
+                }
             }
         },
         actions = {
-            if (selecting) {
+            if (state.shopping) {
+                SyncStatusIndicator(state.syncStatus, Modifier.padding(end = HomeTheme.spacing.medium))
+            } else if (selecting) {
                 IconButton(onClick = {
                     deleteWithUndo(selected.toList())
                     selectedIds = emptyList()
@@ -140,11 +171,19 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
                 }
             } else {
                 SyncStatusIndicator(state.syncStatus)
+                if (state.totalCount > 0) {
+                    IconButton(onClick = {
+                        selectedIds = emptyList()
+                        actions.onStartShopping()
+                    }) {
+                        Icon(Icons.Outlined.ShoppingCartCheckout, contentDescription = "Start shopping")
+                    }
+                }
                 OverflowMenu(onOpenStores = actions.onOpenStores)
             }
         },
         floatingActionButton = {
-            if (!selecting) {
+            if (!selecting && !state.shopping) {
                 ExtendedFloatingActionButton(
                     onClick = { adding = true },
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -156,6 +195,7 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
     ) {
         when {
             state.loading -> LoadingState()
+            state.shopping -> ShoppingModeList(state, actions)
             state.isEmpty -> EmptyState(
                 title = "Nothing on the list",
                 message = "Items added here show up on your other device too.",
@@ -195,6 +235,75 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
             onDismiss = { editingId = null },
             onSave = { actions.onUpdate(editing.id, it) },
         )
+    }
+}
+
+/**
+ * Shopping mode (HOME-18): big check-off rows, optionally narrowed to one store with the chips
+ * (HOME-66). Checking an item moves it to purchase history, so it leaves the list.
+ */
+@Composable
+private fun ShoppingModeList(state: ShoppingUiState, actions: ShoppingActions) {
+    Column(Modifier.fillMaxSize()) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = HomeTheme.spacing.medium),
+            horizontalArrangement = Arrangement.spacedBy(HomeTheme.spacing.small),
+        ) {
+            items(state.filterChips, key = { it.label + it.filter }) { chip ->
+                FilterChip(
+                    selected = chip.filter == state.filter,
+                    onClick = { actions.onFilter(chip.filter) },
+                    label = { Text("${chip.label} · ${chip.count}") },
+                )
+            }
+        }
+        if (state.isEmpty) {
+            val allDone = state.totalCount == 0
+            EmptyState(
+                title = if (allDone) "All done" else "Nothing left here",
+                message = if (allDone) "Everything on the list is checked off." else "Other stores still have items.",
+                icon = Icons.Outlined.ShoppingCartCheckout,
+                actionLabel = if (allDone) "Exit shopping mode" else "Show all",
+                onAction = if (allDone) actions.onStopShopping else ({ actions.onFilter(StoreFilter.All) }),
+            )
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                state.groups.forEach { group ->
+                    stickyHeader(key = "header-${group.storeId}") { StoreHeader(group) }
+                    items(group.items, key = { it.id }) { item ->
+                        CheckOffRow(item, onCheck = { actions.onPurchase(item.id) }, Modifier.animateItem())
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A large, whole-row tap target: in the store, one hand is usually holding something. */
+@Composable
+private fun CheckOffRow(item: ShoppingListItem, onCheck: () -> Unit, modifier: Modifier = Modifier) {
+    var checked by remember(item.id) { mutableStateOf(false) }
+    ListItem(
+        modifier = modifier
+            .heightIn(min = 72.dp)
+            .clickable(enabled = !checked, onClickLabel = "Check off ${item.name}") {
+                checked = true
+                onCheck()
+            },
+        leadingContent = { Checkbox(checked = checked, onCheckedChange = null) },
+        headlineContent = { Text(item.name, style = MaterialTheme.typography.titleMedium) },
+        supportingContent = item.details()?.let { { Text(it) } },
+    )
+}
+
+/** Keeps the display on while this is in the composition (shopping mode). */
+@Composable
+private fun KeepScreenOn() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
     }
 }
 
