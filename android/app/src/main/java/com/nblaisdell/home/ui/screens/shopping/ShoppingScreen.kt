@@ -1,5 +1,6 @@
 package com.nblaisdell.home.ui.screens.shopping
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -44,16 +45,18 @@ import com.nblaisdell.home.ui.theme.HomeTheme
 @Composable
 fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    ShoppingContent(state, onAdd = viewModel::add, onDelete = viewModel::delete)
+    ShoppingContent(state, onAdd = viewModel::add, onUpdate = viewModel::update, onDelete = viewModel::delete)
 }
 
 @Composable
 fun ShoppingContent(
     state: ShoppingUiState,
     onAdd: (ItemForm) -> Unit,
+    onUpdate: (id: String, ItemForm) -> Unit,
     onDelete: (id: String) -> Unit,
 ) {
     var adding by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     HomeScreenScaffold(
         title = "Shopping",
         actions = { SyncStatusIndicator(state.syncStatus, Modifier.padding(end = HomeTheme.spacing.medium)) },
@@ -80,6 +83,7 @@ fun ShoppingContent(
                         stickyHeader(key = "header-${group.storeId}") { StoreHeader(group) }
                         items(group.items, key = { it.id }) { item ->
                             ListItem(
+                                modifier = Modifier.clickable { editingId = item.id },
                                 headlineContent = { Text(item.name) },
                                 supportingContent = item.details()?.let { { Text(it) } },
                                 trailingContent = {
@@ -99,6 +103,15 @@ fun ShoppingContent(
 
     if (adding) {
         ItemSheet(stores = state.stores, onDismiss = { adding = false }, onSave = onAdd)
+    }
+    val editing = editingId?.let { id -> state.groups.flatMap { it.items }.firstOrNull { it.id == id } }
+    if (editing != null) {
+        ItemSheet(
+            stores = state.stores,
+            initial = ItemForm(editing.name, editing.storeId, aisle = editing.aisle ?: "", note = editing.note ?: ""),
+            onDismiss = { editingId = null },
+            onSave = { onUpdate(editing.id, it) },
+        )
     }
 }
 
@@ -150,6 +163,7 @@ private fun ShoppingPreview() {
                 syncStatus = SyncStatus.Live,
             ),
             onAdd = {},
+            onUpdate = { _, _ -> },
             onDelete = {},
         )
     }

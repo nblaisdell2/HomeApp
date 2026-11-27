@@ -48,6 +48,11 @@ class ShoppingViewModel @Inject constructor(
         viewModelScope.launch { repository.add(form.toDraft()) }
     }
 
+    fun update(id: String, form: ItemForm) {
+        if (form.name.isBlank()) return
+        viewModelScope.launch { repository.update(id, form.toDraft()) }
+    }
+
     /** Resolves a newly typed store into a real one (creating it), then builds the draft. */
     private suspend fun ItemForm.toDraft() = ItemDraft(
         name = name,
