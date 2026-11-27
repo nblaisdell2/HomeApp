@@ -22,6 +22,7 @@ androidxHilt = "1.4.0"
 room = "2.8.5"
 work = "2.12.0"
 datastore = "1.3.0"
+glance = "1.2.0"
 tink = "1.24.0"
 
 # Networking / serialization
@@ -74,6 +75,10 @@ androidx-room-testing = { group = "androidx.room", name = "room-testing", versio
 # WorkManager
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
+
+# Glance (home-screen widget, HOME-68)
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 
 # DataStore + Tink (encrypts the device API key with an Android Keystore key)
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }

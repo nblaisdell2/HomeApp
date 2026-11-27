@@ -229,7 +229,7 @@ internal fun matchHistory(query: String, history: List<HistoryEntry>, limit: Int
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StorePicker(
+internal fun StorePicker(
     stores: List<StoreOption>,
     text: String,
     onTextChange: (String) -> Unit,
