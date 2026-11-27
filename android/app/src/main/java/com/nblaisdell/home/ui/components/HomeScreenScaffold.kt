@@ -14,8 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 
 /**
- * Standard screen frame: a top app bar with [title] and optional [actions], an optional FAB,
- * and the screen content. Every top-level screen uses this so they look and behave alike.
+ * Standard screen frame: a top app bar with [title] and optional [actions], an optional FAB
+ * and snackbar host, and the screen content. Every top-level screen uses this so they look and behave alike.
  * The navigation bar/rail around it is drawn by HomeNavHost, not here.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,6 +26,7 @@ fun HomeScreenScaffold(
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
+    snackbarHost: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -42,6 +43,7 @@ fun HomeScreenScaffold(
             )
         },
         floatingActionButton = floatingActionButton,
+        snackbarHost = snackbarHost,
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             content()

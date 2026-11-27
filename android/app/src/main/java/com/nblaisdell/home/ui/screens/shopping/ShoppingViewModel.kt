@@ -61,7 +61,12 @@ class ShoppingViewModel @Inject constructor(
         note = note,
     )
 
-    fun delete(id: String) {
-        viewModelScope.launch { repository.delete(listOf(id)) }
+    fun delete(ids: List<String>) {
+        viewModelScope.launch { repository.delete(ids) }
+    }
+
+    /** Undo for [delete]. */
+    fun restore(ids: List<String>) {
+        viewModelScope.launch { repository.restore(ids) }
     }
 }
