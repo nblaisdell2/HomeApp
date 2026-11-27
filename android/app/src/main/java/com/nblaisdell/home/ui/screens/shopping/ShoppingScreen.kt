@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.ShoppingCartCheckout
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -88,6 +89,7 @@ fun ShoppingScreen(onOpenStores: () -> Unit = {}, viewModel: ShoppingViewModel =
             onStopShopping = viewModel::stopShopping,
             onFilter = viewModel::setFilter,
             onPurchase = viewModel::purchase,
+            onUnpurchase = viewModel::unpurchase,
         ),
     )
 }
@@ -103,12 +105,14 @@ data class ShoppingActions(
     val onStopShopping: () -> Unit = {},
     val onFilter: (StoreFilter) -> Unit = {},
     val onPurchase: (id: String) -> Unit = {},
+    val onUnpurchase: (id: String) -> Unit = {},
 )
 
 @Composable
 fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
     var adding by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     // Long-press multi-select (HOME-17). Ids of rows that have since disappeared drop out.
     var selectedIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val allItems = state.groups.flatMap { it.items }
@@ -117,6 +121,15 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    /** Shows [message] with Undo; [undo] runs if it's tapped. Replaces any snackbar showing. */
+    fun offerUndo(message: String, undo: () -> Unit) {
+        scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val result = snackbar.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) undo()
+        }
+    }
 
     /** Deletes, then offers Undo (deletes are tombstones, so Undo just restores them). */
     fun deleteWithUndo(ids: List<String>) {
@@ -127,11 +140,13 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
         } else {
             "Deleted ${ids.size} items"
         }
-        scope.launch {
-            snackbar.currentSnackbarData?.dismiss()
-            val result = snackbar.showSnackbar(label, actionLabel = "Undo", duration = SnackbarDuration.Long)
-            if (result == SnackbarResult.ActionPerformed) actions.onRestore(ids)
-        }
+        offerUndo(label) { actions.onRestore(ids) }
+    }
+
+    /** Check-off in shopping mode (HOME-67): the item goes to history, and a mis-tap can be undone. */
+    fun purchaseWithUndo(item: ShoppingListItem) {
+        actions.onPurchase(item.id)
+        offerUndo("Got ${item.name}") { actions.onUnpurchase(item.id) }
     }
 
     fun toggle(id: String) {
@@ -179,6 +194,9 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
                         Icon(Icons.Outlined.ShoppingCartCheckout, contentDescription = "Start shopping")
                     }
                 }
+                IconButton(onClick = { showHistory = true }) {
+                    Icon(Icons.Outlined.History, contentDescription = "Recently bought")
+                }
                 OverflowMenu(onOpenStores = actions.onOpenStores)
             }
         },
@@ -195,7 +213,7 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
     ) {
         when {
             state.loading -> LoadingState()
-            state.shopping -> ShoppingModeList(state, actions)
+            state.shopping -> ShoppingModeList(state, actions, onCheck = ::purchaseWithUndo)
             state.isEmpty -> EmptyState(
                 title = "Nothing on the list",
                 message = "Items added here show up on your other device too.",
@@ -225,7 +243,27 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
     }
 
     if (adding) {
-        ItemSheet(stores = state.stores, onDismiss = { adding = false }, onSave = actions.onAdd)
+        ItemSheet(
+            stores = state.stores,
+            onDismiss = { adding = false },
+            onSave = actions.onAdd,
+            suggestions = state.history,
+        )
+    }
+    if (showHistory) {
+        HistorySheet(
+            history = state.history,
+            stores = state.stores,
+            onListNames = state.onListNames,
+            onReAdd = { entry ->
+                actions.onUnpurchase(entry.itemId)
+                scope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    snackbar.showSnackbar("Added ${entry.name} back")
+                }
+            },
+            onDismiss = { showHistory = false },
+        )
     }
     val editing = editingId?.let { id -> allItems.firstOrNull { it.id == id } }
     if (editing != null) {
@@ -240,10 +278,14 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
 
 /**
  * Shopping mode (HOME-18): big check-off rows, optionally narrowed to one store with the chips
- * (HOME-66). Checking an item moves it to purchase history, so it leaves the list.
+ * (HOME-66). Checking an item moves it to purchase history, so it leaves the list (with Undo).
  */
 @Composable
-private fun ShoppingModeList(state: ShoppingUiState, actions: ShoppingActions) {
+private fun ShoppingModeList(
+    state: ShoppingUiState,
+    actions: ShoppingActions,
+    onCheck: (ShoppingListItem) -> Unit,
+) {
     Column(Modifier.fillMaxSize()) {
         LazyRow(
             contentPadding = PaddingValues(horizontal = HomeTheme.spacing.medium),
@@ -271,7 +313,7 @@ private fun ShoppingModeList(state: ShoppingUiState, actions: ShoppingActions) {
                 state.groups.forEach { group ->
                     stickyHeader(key = "header-${group.storeId}") { StoreHeader(group) }
                     items(group.items, key = { it.id }) { item ->
-                        CheckOffRow(item, onCheck = { actions.onPurchase(item.id) }, Modifier.animateItem())
+                        CheckOffRow(item, onCheck = { onCheck(item) }, Modifier.animateItem())
                         HorizontalDivider()
                     }
                 }

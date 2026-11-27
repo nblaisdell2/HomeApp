@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -38,6 +39,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.window.PopupProperties
+import com.nblaisdell.home.data.repository.HistoryEntry
 import com.nblaisdell.home.data.repository.StoreOption
 import com.nblaisdell.home.ui.theme.HomeTheme
 
@@ -64,6 +66,7 @@ fun ItemSheet(
     onDismiss: () -> Unit,
     onSave: (ItemForm) -> Unit,
     initial: ItemForm? = null,
+    suggestions: List<HistoryEntry> = emptyList(),
 ) {
     val editing = initial != null
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -102,19 +105,20 @@ fun ItemSheet(
             verticalArrangement = Arrangement.spacedBy(HomeTheme.spacing.medium),
         ) {
             Text(if (editing) "Edit item" else "Add item", style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(
+            NameField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Item") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(nameFocus),
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { submit() }),
+                // Autocomplete from purchase history (HOME-67), only when adding.
+                suggestions = if (editing) emptyList() else matchHistory(name, suggestions),
+                onPick = { entry ->
+                    name = entry.name
+                    storeId = entry.storeId?.takeIf { id -> stores.any { it.id == id } }
+                    storeText = storeId?.let { id -> stores.first { it.id == id }.name } ?: ""
+                    aisle = entry.aisle ?: ""
+                    note = entry.note ?: ""
+                },
+                onDone = submit,
+                modifier = Modifier.focusRequester(nameFocus),
             )
             StorePicker(
                 stores = stores,
@@ -153,6 +157,70 @@ fun ItemSheet(
     }
 
     LaunchedEffect(Unit) { if (!editing) nameFocus.requestFocus() }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NameField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    suggestions: List<HistoryEntry>,
+    onPick: (HistoryEntry) -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded && suggestions.isNotEmpty(), onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                expanded = true
+            },
+            label = { Text("Item") },
+            singleLine = true,
+            modifier = modifier
+                .fillMaxWidth()
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = {
+                expanded = false
+                onDone()
+            }),
+        )
+        DropdownMenu(
+            expanded = expanded && suggestions.isNotEmpty(),
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.exposedDropdownSize(),
+            properties = PopupProperties(focusable = false),
+        ) {
+            suggestions.forEach { entry ->
+                DropdownMenuItem(
+                    text = { Text(entry.name) },
+                    leadingIcon = { Icon(Icons.Outlined.History, contentDescription = null) },
+                    onClick = {
+                        onPick(entry)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * History entries whose name starts with what's typed (then ones containing it), excluding an
+ * exact match, at most [limit]. Nothing until at least one character is typed.
+ */
+internal fun matchHistory(query: String, history: List<HistoryEntry>, limit: Int = 5): List<HistoryEntry> {
+    val q = query.trim()
+    if (q.isEmpty()) return emptyList()
+    val candidates = history.filter { it.name.contains(q, ignoreCase = true) && !it.name.equals(q, ignoreCase = true) }
+    val (prefix, rest) = candidates.partition { it.name.startsWith(q, ignoreCase = true) }
+    return (prefix + rest).take(limit)
 }
 
 /**

@@ -3,6 +3,7 @@ package com.nblaisdell.home.ui.screens.shopping
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nblaisdell.home.data.repository.HistoryEntry
 import com.nblaisdell.home.data.repository.ItemDraft
 import com.nblaisdell.home.data.repository.ShoppingRepository
 import com.nblaisdell.home.data.repository.StoreOption
@@ -31,6 +32,10 @@ data class ShoppingUiState(
     val filterChips: List<FilterChipState> = emptyList(),
     /** Total items on the list, regardless of [filter]. */
     val totalCount: Int = 0,
+    /** Recently bought items (HOME-67), for the history sheet and add-form autocomplete. */
+    val history: List<HistoryEntry> = emptyList(),
+    /** Normalized names of everything on the list, to mark history entries already re-added. */
+    val onListNames: Set<String> = emptySet(),
 ) {
     val isEmpty: Boolean get() = groups.isEmpty()
 }
@@ -47,9 +52,11 @@ class ShoppingViewModel @Inject constructor(
     private val shopping = savedState.getStateFlow(KEY_SHOPPING, false)
     private val filterKey = savedState.getStateFlow(KEY_FILTER, FILTER_ALL)
 
+    private val listAndHistory = combine(repository.items, repository.history) { items, history -> items to history }
+
     val uiState: StateFlow<ShoppingUiState> =
-        combine(repository.items, storeRepository.stores, tracker.status, shopping, filterKey) {
-                items, stores, status, shopping, key ->
+        combine(listAndHistory, storeRepository.stores, tracker.status, shopping, filterKey) {
+                (items, history), stores, status, shopping, key ->
             val all = groupForDisplay(items, stores)
             val filter = if (shopping) key.toFilter() else StoreFilter.All
             ShoppingUiState(
@@ -61,6 +68,8 @@ class ShoppingViewModel @Inject constructor(
                 filter = filter,
                 filterChips = filterChips(all),
                 totalCount = items.size,
+                history = history,
+                onListNames = items.mapTo(mutableSetOf()) { it.name.normalized() },
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ShoppingUiState())
 
@@ -111,6 +120,11 @@ class ShoppingViewModel @Inject constructor(
     /** Checks an item off: it leaves the list and goes into purchase history. */
     fun purchase(id: String) {
         viewModelScope.launch { repository.purchase(id) }
+    }
+
+    /** Undo for [purchase], and re-adding from "Recently bought". */
+    fun unpurchase(id: String) {
+        viewModelScope.launch { repository.unpurchase(id) }
     }
 
     private fun String.toFilter(): StoreFilter = when (this) {
