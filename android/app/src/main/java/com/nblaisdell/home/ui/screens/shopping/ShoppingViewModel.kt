@@ -43,13 +43,18 @@ class ShoppingViewModel @Inject constructor(
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ShoppingUiState())
 
-    fun add(name: String, store: String?) {
-        if (name.isBlank()) return
-        viewModelScope.launch {
-            val storeId = store?.takeIf { it.isNotBlank() }?.let { storeRepository.findOrCreate(it) }
-            repository.add(ItemDraft(name, storeId))
-        }
+    fun add(form: ItemForm) {
+        if (form.name.isBlank()) return
+        viewModelScope.launch { repository.add(form.toDraft()) }
     }
+
+    /** Resolves a newly typed store into a real one (creating it), then builds the draft. */
+    private suspend fun ItemForm.toDraft() = ItemDraft(
+        name = name,
+        storeId = newStoreName?.let { storeRepository.findOrCreate(it) } ?: storeId,
+        aisle = aisle,
+        note = note,
+    )
 
     fun delete(id: String) {
         viewModelScope.launch { repository.delete(listOf(id)) }
