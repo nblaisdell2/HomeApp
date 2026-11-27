@@ -17,8 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -59,7 +63,7 @@ import com.nblaisdell.home.ui.theme.HomeTheme
 import kotlinx.coroutines.launch
 
 @Composable
-fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
+fun ShoppingScreen(onOpenStores: () -> Unit = {}, viewModel: ShoppingViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ShoppingContent(
         state,
@@ -68,6 +72,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
             onUpdate = viewModel::update,
             onDelete = viewModel::delete,
             onRestore = viewModel::restore,
+            onOpenStores = onOpenStores,
         ),
     )
 }
@@ -78,6 +83,7 @@ data class ShoppingActions(
     val onUpdate: (id: String, ItemForm) -> Unit = { _, _ -> },
     val onDelete: (ids: List<String>) -> Unit = {},
     val onRestore: (ids: List<String>) -> Unit = {},
+    val onOpenStores: () -> Unit = {},
 )
 
 @Composable
@@ -133,7 +139,8 @@ fun ShoppingContent(state: ShoppingUiState, actions: ShoppingActions) {
                     Icon(Icons.Outlined.Delete, contentDescription = "Delete selected")
                 }
             } else {
-                SyncStatusIndicator(state.syncStatus, Modifier.padding(end = HomeTheme.spacing.medium))
+                SyncStatusIndicator(state.syncStatus)
+                OverflowMenu(onOpenStores = actions.onOpenStores)
             }
         },
         floatingActionButton = {
@@ -248,6 +255,26 @@ private fun ItemRow(
             headlineContent = { Text(item.name) },
             supportingContent = item.details()?.let { { Text(it) } },
         )
+    }
+}
+
+@Composable
+private fun OverflowMenu(onOpenStores: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Manage stores") },
+                leadingIcon = { Icon(Icons.Outlined.Storefront, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onOpenStores()
+                },
+            )
+        }
     }
 }
 

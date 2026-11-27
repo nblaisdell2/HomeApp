@@ -14,3 +14,6 @@ import kotlinx.serialization.Serializable
 
 /** Not in the nav bar: opened from the gear icon on the Home screen. */
 @Serializable data object SettingsRoute
+
+/** Not in the nav bar: opened from the Shopping screen's menu (HOME-66). */
+@Serializable data object StoresRoute

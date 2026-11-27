@@ -18,6 +18,7 @@ import com.nblaisdell.home.ui.screens.home.HomeScreen
 import com.nblaisdell.home.ui.screens.placeholder.PlaceholderScreen
 import com.nblaisdell.home.ui.screens.settings.SettingsScreen
 import com.nblaisdell.home.ui.screens.shopping.ShoppingScreen
+import com.nblaisdell.home.ui.screens.stores.StoresScreen
 
 /**
  * App shell. NavigationSuiteScaffold picks the navigation UI from the window size:
@@ -68,7 +69,8 @@ fun HomeNavHost(
             composable<WeatherRoute> {
                 PlaceholderScreen(TopLevelDestination.Weather, "Hourly and weekly forecast, with a snow indicator.")
             }
-            composable<ShoppingRoute> { ShoppingScreen() }
+            composable<ShoppingRoute> { ShoppingScreen(onOpenStores = { navController.navigate(StoresRoute) }) }
+            composable<StoresRoute> { StoresScreen(onBack = { navController.popBackStack() }) }
             composable<EvercentRoute> {
                 PlaceholderScreen(TopLevelDestination.Evercent, "Upcoming automation run and key budget categories.")
             }
