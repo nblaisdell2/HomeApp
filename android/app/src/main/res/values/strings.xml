@@ -1,2 +1,5 @@
 <resources>
+    <string name="shopping_widget_description">Shopping list count and quick add</string>
+    <string name="shortcut_add_item_short">Add item</string>
+    <string name="shortcut_add_item_long">Add shopping item</string>
 </resources>

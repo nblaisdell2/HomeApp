@@ -7,6 +7,7 @@ import {
   ShoppingItemUpsertResult,
 } from '../../../schemas/shopping.js'
 import { listChangesSince, upsertItem } from '../../../repositories/shopping-items.repository.js'
+import { stripNulls } from '../../../lib/strip-nulls.js'
 
 const shoppingItems: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
@@ -46,6 +47,7 @@ const shoppingItems: FastifyPluginAsyncTypebox = async (app) => {
           ...authErrorResponses,
         },
       },
+      preValidation: stripNulls,
     },
     async (request) => {
       const result = await app.pg.transact((client) =>

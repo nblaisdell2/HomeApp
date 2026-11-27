@@ -2,4 +2,13 @@
 <resources>
     <!-- Window theme only; all in-app styling comes from the Compose HomeTheme. -->
     <style name="Theme.Home" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Quick add (HOME-68): a transparent window so the Compose dialog floats over whatever
+         was on screen (home screen, widget host) instead of opening the full app. -->
+    <style name="Theme.Home.QuickAdd" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
 </resources>

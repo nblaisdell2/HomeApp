@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * A shopping item as cached on this device.
  *
+ * - [storeId] points at a [StoreEntity]; null (or a deleted/unknown store) means "Anywhere".
+ * - [purchasedAt] is set when the item is checked off in shopping mode (HOME-67). The item then
+ *   leaves the list and lives in "Recently bought" history; clearing it puts it back.
+ *
  * Sync bookkeeping:
  * - [modifiedAt] is when the item was last edited on *any* device (epoch millis). The newest
  *   edit wins when two devices change the same item.
@@ -22,7 +26,10 @@ import kotlinx.coroutines.flow.Flow
 data class ShoppingItemEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val store: String?,
+    @ColumnInfo(name = "store_id") val storeId: String? = null,
+    val aisle: String? = null,
+    val note: String? = null,
+    @ColumnInfo(name = "purchased_at") val purchasedAt: Long? = null,
     @ColumnInfo(name = "modified_at") val modifiedAt: Long,
     val deleted: Boolean = false,
     @ColumnInfo(name = "server_version") val serverVersion: Long? = null,
@@ -31,10 +38,19 @@ data class ShoppingItemEntity(
 
 @Dao
 interface ShoppingItemDao {
-    @Query("SELECT * FROM shopping_items WHERE deleted = 0 ORDER BY name COLLATE NOCASE")
-    fun observeActive(): Flow<List<ShoppingItemEntity>>
+    /** Items on the list: not deleted and not yet bought. */
+    @Query("SELECT * FROM shopping_items WHERE deleted = 0 AND purchased_at IS NULL")
+    fun observeOnList(): Flow<List<ShoppingItemEntity>>
 
-    @Query("SELECT COUNT(*) FROM shopping_items WHERE deleted = 0")
+    /** Bought items since [sinceMillis], newest purchase first (may repeat a name). */
+    @Query(
+        """SELECT * FROM shopping_items
+           WHERE deleted = 0 AND purchased_at IS NOT NULL AND purchased_at >= :sinceMillis
+           ORDER BY purchased_at DESC""",
+    )
+    fun observePurchasedSince(sinceMillis: Long): Flow<List<ShoppingItemEntity>>
+
+    @Query("SELECT COUNT(*) FROM shopping_items WHERE deleted = 0 AND purchased_at IS NULL")
     fun observeActiveCount(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM shopping_items WHERE pending_sync = 1")
@@ -42,6 +58,9 @@ interface ShoppingItemDao {
 
     @Query("SELECT * FROM shopping_items WHERE id = :id")
     suspend fun getById(id: String): ShoppingItemEntity?
+
+    @Query("SELECT * FROM shopping_items WHERE deleted = 0 AND store_id = :storeId")
+    suspend fun getByStore(storeId: String): List<ShoppingItemEntity>
 
     @Query("SELECT * FROM shopping_items WHERE pending_sync = 1")
     suspend fun getPending(): List<ShoppingItemEntity>

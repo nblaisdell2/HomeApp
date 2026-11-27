@@ -192,6 +192,10 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // Home-screen widget (HOME-68)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+
     // DataStore, serialization, coroutines
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)

@@ -14,6 +14,12 @@ client generator). Jira project HOME; README.md covers setup and commands.
 - Android never calls the network from screens. Screens read Room through repositories; writes
   mark rows `pendingSync` and call `SyncScheduler.requestSync()`. `SyncEngine` does push-then-pull
   with last-write-wins on `modifiedAt` and a server `version` cursor.
+- A new synced table needs: a migration + repository using `CHANGE_LOCK_KEY`/`change_seq`, a
+  `/v1/<table>` GET-changes + PUT route pair, a `ChangeEvent.entity` value, and on Android a
+  `CursorSync` subclass (`data/sync/EntitySync.kt`) listed in `SyncEngine` in dependency order.
+  Nothing is hard-deleted; deletes are `deleted = true` tombstones.
+- Room schema changes need a `Migration` in `data/local/Migrations.kt` and a `MigrationTest` case
+  (`./gradlew :app:connectedDebugAndroidTest` with an emulator running).
 - Generated client: `com.nblaisdell.home.data.remote.generated.*` under `app/build/generated`.
   Don't edit it; skip files via `android/app/openapi-generator-ignore`.
 - Debug builds use `http://localhost:3000/` plus `adb reverse tcp:3000 tcp:3000`. Emulator access

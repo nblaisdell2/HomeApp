@@ -29,18 +29,54 @@ function changes(since = 0, limit?: number) {
 describe('PUT /v1/shopping-items/:id', () => {
   it('creates an item', async () => {
     const id = randomUUID()
-    const res = await put(id, { name: 'Milk', store: 'Aldi', modifiedAt: at(0) })
+    const storeId = randomUUID()
+    const res = await put(id, { name: 'Milk', storeId, aisle: '4', note: '2 gallons', modifiedAt: at(0) })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({
       applied: true,
-      item: { id, name: 'Milk', store: 'Aldi', deleted: false, modifiedAt: at(0) },
+      item: { id, name: 'Milk', storeId, aisle: '4', note: '2 gallons', deleted: false, modifiedAt: at(0) },
     })
     expect(res.json().item.version).toBeGreaterThan(0)
   })
 
-  it('omits store when not set', async () => {
+  it('omits optional fields when not set', async () => {
     const res = await put(randomUUID(), { name: 'Eggs', modifiedAt: at(0) })
+    for (const field of ['storeId', 'aisle', 'note', 'purchasedAt']) {
+      expect(res.json().item).not.toHaveProperty(field)
+    }
+  })
+
+  it('treats null optional fields as not set', async () => {
+    const res = await put(randomUUID(), {
+      name: 'Eggs', storeId: null, aisle: null, note: null, purchasedAt: null, modifiedAt: at(0),
+    })
+    expect(res.statusCode).toBe(200)
+    for (const field of ['storeId', 'aisle', 'note', 'purchasedAt']) {
+      expect(res.json().item).not.toHaveProperty(field)
+    }
+  })
+
+  it('ignores the legacy free-text store sent by older app builds', async () => {
+    const res = await put(randomUUID(), { name: 'Eggs', store: 'Aldi', modifiedAt: at(0) })
+    expect(res.statusCode).toBe(200)
     expect(res.json().item).not.toHaveProperty('store')
+  })
+
+  it('records a purchase and clears it again (undo / re-add)', async () => {
+    const id = randomUUID()
+    await put(id, { name: 'Milk', modifiedAt: at(0) })
+    const bought = (await put(id, { name: 'Milk', purchasedAt: at(1), modifiedAt: at(1) })).json()
+    expect(bought.item.purchasedAt).toBe(at(1))
+    const readded = (await put(id, { name: 'Milk', modifiedAt: at(2) })).json()
+    expect(readded.applied).toBe(true)
+    expect(readded.item).not.toHaveProperty('purchasedAt')
+  })
+
+  it('validates the new fields', async () => {
+    expect((await put(randomUUID(), { name: 'Milk', storeId: 'nope', modifiedAt: at(0) })).statusCode).toBe(400)
+    expect((await put(randomUUID(), { name: 'Milk', aisle: 'x'.repeat(51), modifiedAt: at(0) })).statusCode).toBe(400)
+    expect((await put(randomUUID(), { name: 'Milk', note: 'x'.repeat(201), modifiedAt: at(0) })).statusCode).toBe(400)
+    expect((await put(randomUUID(), { name: 'Milk', purchasedAt: 'yesterday', modifiedAt: at(0) })).statusCode).toBe(400)
   })
 
   it('applies a newer edit and bumps the version', async () => {

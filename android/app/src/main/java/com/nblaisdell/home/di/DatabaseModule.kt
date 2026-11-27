@@ -3,8 +3,10 @@ package com.nblaisdell.home.di
 import android.content.Context
 import androidx.room.Room
 import com.nblaisdell.home.data.local.HomeDatabase
+import com.nblaisdell.home.data.local.MIGRATION_1_2
 import com.nblaisdell.home.data.local.RoomTransactionRunner
 import com.nblaisdell.home.data.local.ShoppingItemDao
+import com.nblaisdell.home.data.local.StoreDao
 import com.nblaisdell.home.data.local.SyncStateDao
 import com.nblaisdell.home.data.local.TransactionRunner
 import dagger.Binds
@@ -22,13 +24,18 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): HomeDatabase =
-        Room.databaseBuilder(context, HomeDatabase::class.java, HomeDatabase.NAME).build()
+        Room.databaseBuilder(context, HomeDatabase::class.java, HomeDatabase.NAME)
+            .addMigrations(MIGRATION_1_2)
+            .build()
 
     @Provides
     fun provideSyncStateDao(db: HomeDatabase): SyncStateDao = db.syncStateDao()
 
     @Provides
     fun provideShoppingItemDao(db: HomeDatabase): ShoppingItemDao = db.shoppingItemDao()
+
+    @Provides
+    fun provideStoreDao(db: HomeDatabase): StoreDao = db.storeDao()
 }
 
 @Module

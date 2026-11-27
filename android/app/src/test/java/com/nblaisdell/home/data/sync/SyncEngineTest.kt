@@ -2,6 +2,8 @@ package com.nblaisdell.home.data.sync
 
 import com.nblaisdell.home.data.local.ShoppingItemDao
 import com.nblaisdell.home.data.local.ShoppingItemEntity
+import com.nblaisdell.home.data.local.StoreDao
+import com.nblaisdell.home.data.local.StoreEntity
 import com.nblaisdell.home.data.local.SyncStateDao
 import com.nblaisdell.home.data.local.SyncStateEntity
 import com.nblaisdell.home.data.local.TransactionRunner
@@ -10,6 +12,10 @@ import com.nblaisdell.home.data.remote.generated.model.ShoppingItem
 import com.nblaisdell.home.data.remote.generated.model.ShoppingItemChanges
 import com.nblaisdell.home.data.remote.generated.model.ShoppingItemUpsert
 import com.nblaisdell.home.data.remote.generated.model.ShoppingItemUpsertResult
+import com.nblaisdell.home.data.remote.generated.model.Store
+import com.nblaisdell.home.data.remote.generated.model.StoreChanges
+import com.nblaisdell.home.data.remote.generated.model.StoreUpsert
+import com.nblaisdell.home.data.remote.generated.model.StoreUpsertResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -27,11 +33,13 @@ import java.util.UUID
 class SyncEngineTest {
 
     private val dao = FakeShoppingItemDao()
+    private val storeDao = FakeStoreDao()
     private val syncState = FakeSyncStateDao()
     private val server = FakeServer()
-    private val engine = SyncEngine(server, dao, syncState, NoTransaction)
+    private val engine = SyncEngine(server, storeDao, dao, syncState, NoTransaction)
 
     private val idA = UUID.randomUUID()
+    private val storeA = UUID.randomUUID()
     private val t0 = 1_764_158_400_000L // 2025-11-26T12:00:00Z
 
     @Test
@@ -44,6 +52,23 @@ class SyncEngineTest {
         val row = dao.getById(idA.toString())!!
         assertFalse(row.pendingSync)
         assertEquals(server.items[idA]!!.version, row.serverVersion)
+    }
+
+    @Test
+    fun `uploads every item field`() = runTest {
+        dao.upsert(
+            local(idA, "Milk", modifiedAt = t0, pending = true).copy(
+                storeId = storeA.toString(), aisle = "4", note = "2 gallons", purchasedAt = t0,
+            ),
+        )
+
+        engine.sync()
+
+        val uploaded = server.items[idA]!!
+        assertEquals(storeA, uploaded.storeId)
+        assertEquals("4", uploaded.aisle)
+        assertEquals("2 gallons", uploaded.note)
+        assertEquals(formatInstant(t0), uploaded.purchasedAt)
     }
 
     @Test
@@ -94,6 +119,68 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `stores sync both ways with their own cursor`() = runTest {
+        storeDao.upsert(StoreEntity(storeA.toString(), "Costco", sortOrder = 0, modifiedAt = t0, pendingSync = true))
+        val other = UUID.randomUUID()
+        server.putStore(other, "Aldi", sortOrder = 1, modifiedAt = t0)
+
+        engine.sync()
+
+        assertEquals("Costco", server.stores[storeA]!!.name)
+        assertFalse(storeDao.getById(storeA.toString())!!.pendingSync)
+        assertEquals("Aldi", storeDao.getById(other.toString())!!.name)
+        assertEquals(server.stores.values.maxOf { it.version }.toString(), syncState.get(SyncEngine.STORES_CURSOR))
+    }
+
+    @Test
+    fun `stores are uploaded before the items that use them`() = runTest {
+        dao.upsert(local(idA, "Milk", modifiedAt = t0, pending = true).copy(storeId = storeA.toString()))
+        storeDao.upsert(StoreEntity(storeA.toString(), "Costco", modifiedAt = t0, pendingSync = true))
+
+        engine.sync()
+
+        assertEquals(listOf("store:$storeA", "item:$idA"), server.uploads)
+    }
+
+    @Test
+    fun `a migrated legacy store adopts the server's copy`() = runTest {
+        // The Room migration writes old stores with modifiedAt = 0; the server's is newer.
+        server.putStore(storeA, "Costco", sortOrder = 3, modifiedAt = t0)
+        storeDao.upsert(StoreEntity(storeA.toString(), "costco", modifiedAt = 0, pendingSync = true))
+
+        engine.sync()
+
+        val row = storeDao.getById(storeA.toString())!!
+        assertEquals("Costco", row.name)
+        assertEquals(3, row.sortOrder)
+        assertFalse(row.pendingSync)
+    }
+
+    @Test
+    fun `a newer pending store edit survives an older server copy`() {
+        val local = StoreEntity(storeA.toString(), "Costco Wholesale", modifiedAt = t0 + 5, pendingSync = true)
+        val serverCopy = Store(storeA, "Costco", 0, formatInstant(t0), false, 7)
+        assertNull(mergeServerStore(local, serverCopy))
+    }
+
+    @Test
+    fun `stores with the same name are merged into the one with the smallest id`() = runTest {
+        val (keep, drop) = listOf(UUID.randomUUID(), UUID.randomUUID()).sortedBy { it.toString() }
+        server.putStore(keep, "Aldi", sortOrder = 0, modifiedAt = t0) // created on the other device
+        storeDao.upsert(StoreEntity(drop.toString(), "aldi ", modifiedAt = t0, pendingSync = true))
+        dao.upsert(local(idA, "Milk", modifiedAt = t0, pending = true).copy(storeId = drop.toString()))
+
+        engine.sync()
+
+        assertEquals(listOf(keep.toString()), storeDao.getActive().map { it.id })
+        assertEquals(keep.toString(), dao.getById(idA.toString())!!.storeId)
+        // The merge is uploaded in the same pass.
+        assertTrue(server.stores[drop]!!.deleted)
+        assertEquals(keep, server.items[idA]!!.storeId)
+        assertFalse(dao.getById(idA.toString())!!.pendingSync)
+    }
+
+    @Test
     fun `reports offline and keeps edits pending when the network is down`() = runTest {
         dao.upsert(local(idA, "Milk", modifiedAt = t0, pending = true))
         server.offline = true
@@ -111,7 +198,7 @@ class SyncEngineTest {
     // --- helpers -------------------------------------------------------------------------
 
     private fun local(id: UUID, name: String, modifiedAt: Long, pending: Boolean) =
-        ShoppingItemEntity(id.toString(), name, null, modifiedAt, pendingSync = pending)
+        ShoppingItemEntity(id.toString(), name, modifiedAt = modifiedAt, pendingSync = pending)
 
     private fun serverItem(id: UUID, name: String, modifiedAt: Long, version: Long, deleted: Boolean = false) =
         ShoppingItem(id, name, formatInstant(modifiedAt), deleted, version)
@@ -123,12 +210,18 @@ class SyncEngineTest {
     /** Mimics the API's last-write-wins rules in memory. */
     private class FakeServer : ShoppingApi {
         val items = linkedMapOf<UUID, ShoppingItem>()
+        val stores = linkedMapOf<UUID, Store>()
+        val uploads = mutableListOf<String>()
         private var version = 0L
         var offline = false
         var unauthorized = false
 
         fun put(id: UUID, name: String, modifiedAt: Long, deleted: Boolean = false) {
             items[id] = ShoppingItem(id, name, formatInstant(modifiedAt), deleted, ++version)
+        }
+
+        fun putStore(id: UUID, name: String, sortOrder: Int, modifiedAt: Long, deleted: Boolean = false) {
+            stores[id] = Store(id, name, sortOrder, formatInstant(modifiedAt), deleted, ++version)
         }
 
         private fun check() {
@@ -154,25 +247,57 @@ class SyncEngineTest {
         ): Response<ShoppingItemUpsertResult> {
             check()
             if (unauthorized) return unauthorizedResponse()
+            uploads += "item:$id"
             val current = items[id]
             val incoming = parseInstant(shoppingItemUpsert.modifiedAt)
             if (current != null && parseInstant(current.modifiedAt) >= incoming) {
                 return Response.success(ShoppingItemUpsertResult(false, current))
             }
-            put(id, shoppingItemUpsert.name, incoming, shoppingItemUpsert.deleted ?: false)
+            with(shoppingItemUpsert) {
+                items[id] = ShoppingItem(
+                    id, name, modifiedAt, deleted ?: false, ++version, storeId, aisle, note, purchasedAt,
+                )
+            }
             return Response.success(ShoppingItemUpsertResult(true, items[id]!!))
+        }
+
+        override suspend fun listStoreChanges(since: Long, limit: Int): Response<StoreChanges> {
+            check()
+            if (unauthorized) return unauthorizedResponse()
+            val changed = stores.values.filter { it.version > since }.sortedBy { it.version }
+            val page = changed.take(limit)
+            return Response.success(StoreChanges(page, page.lastOrNull()?.version ?: since, changed.size > limit))
+        }
+
+        override suspend fun upsertStore(id: UUID, storeUpsert: StoreUpsert): Response<StoreUpsertResult> {
+            check()
+            if (unauthorized) return unauthorizedResponse()
+            uploads += "store:$id"
+            val current = stores[id]
+            val incoming = parseInstant(storeUpsert.modifiedAt)
+            if (current != null && parseInstant(current.modifiedAt) >= incoming) {
+                return Response.success(StoreUpsertResult(false, current))
+            }
+            putStore(id, storeUpsert.name, storeUpsert.sortOrder, incoming, storeUpsert.deleted ?: false)
+            return Response.success(StoreUpsertResult(true, stores[id]!!))
         }
     }
 
     private class FakeShoppingItemDao : ShoppingItemDao {
         private val rows = MutableStateFlow<Map<String, ShoppingItemEntity>>(emptyMap())
 
-        override fun observeActive(): Flow<List<ShoppingItemEntity>> =
-            rows.map { m -> m.values.filter { !it.deleted }.sortedBy { it.name } }
+        private fun onList(e: ShoppingItemEntity) = !e.deleted && e.purchasedAt == null
+        override fun observeOnList(): Flow<List<ShoppingItemEntity>> = rows.map { m -> m.values.filter(::onList) }
+        override fun observePurchasedSince(sinceMillis: Long): Flow<List<ShoppingItemEntity>> = rows.map { m ->
+            m.values.filter { !it.deleted && (it.purchasedAt ?: -1) >= sinceMillis }.sortedByDescending { it.purchasedAt }
+        }
 
-        override fun observeActiveCount(): Flow<Int> = rows.map { m -> m.values.count { !it.deleted } }
+        override fun observeActiveCount(): Flow<Int> = rows.map { m -> m.values.count(::onList) }
         override fun observePendingCount(): Flow<Int> = rows.map { m -> m.values.count { it.pendingSync } }
         override suspend fun getById(id: String) = rows.value[id]
+        override suspend fun getByStore(storeId: String) =
+            rows.value.values.filter { !it.deleted && it.storeId == storeId }
+
         override suspend fun getPending() = rows.value.values.filter { it.pendingSync }
         override suspend fun upsert(item: ShoppingItemEntity) {
             rows.value = rows.value + (item.id to item)
@@ -187,6 +312,26 @@ class SyncEngineTest {
 
         override suspend fun clear() {
             rows.value = emptyMap()
+        }
+    }
+
+    private class FakeStoreDao : StoreDao {
+        private val rows = MutableStateFlow<Map<String, StoreEntity>>(emptyMap())
+        private fun active() = rows.value.values.filter { !it.deleted }.sortedWith(compareBy({ it.sortOrder }, { it.name }))
+
+        override fun observeActive(): Flow<List<StoreEntity>> = rows.map { active() }
+        override suspend fun getActive() = active()
+        override suspend fun getById(id: String) = rows.value[id]
+        override suspend fun getPending() = rows.value.values.filter { it.pendingSync }
+        override suspend fun upsert(store: StoreEntity) {
+            rows.value = rows.value + (store.id to store)
+        }
+
+        override suspend fun markSynced(id: String, uploadedModifiedAt: Long, serverVersion: Long) {
+            val row = rows.value[id] ?: return
+            if (row.modifiedAt == uploadedModifiedAt) {
+                upsert(row.copy(pendingSync = false, serverVersion = serverVersion))
+            }
         }
     }
 

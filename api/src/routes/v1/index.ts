@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import health from './health.js'
 import shoppingItems from './shopping-items/index.js'
+import stores from './stores/index.js'
 import events from './events/index.js'
 
 /**
@@ -12,6 +13,7 @@ const v1: FastifyPluginAsync = async (app) => {
 
   await app.register(health)
   await app.register(shoppingItems, { prefix: '/shopping-items' })
+  await app.register(stores, { prefix: '/stores' })
   await app.register(events, { prefix: '/events' })
 }
 

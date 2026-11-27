@@ -3,7 +3,7 @@ import type { ServerResponse } from 'node:http'
 import fp from 'fastify-plugin'
 
 export interface ChangeEvent {
-  entity: 'shopping_item'
+  entity: 'shopping_item' | 'store'
   id: string
   version: number
 }

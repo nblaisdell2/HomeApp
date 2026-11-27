@@ -23,7 +23,7 @@ export default fp(
         },
         tags: [
           { name: 'health', description: 'Service status' },
-          { name: 'shopping', description: 'Shopping list items' },
+          { name: 'shopping', description: 'Shopping list items and stores' },
           { name: 'events', description: 'Live change notifications' },
         ],
         components: {

@@ -24,6 +24,28 @@
             </intent-filter>
         </activity>
 
+        <!-- HOME-68: add a shopping item without opening the app (widget "+" and launcher
+             shortcut). Own task affinity so finishing it returns to the home screen. -->
+        <activity
+            android:name=".ui.quickadd.QuickAddActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize|stateVisible"
+            android:theme="@style/Theme.Home.QuickAdd" />
+
+        <receiver
+            android:name=".ui.widget.ShoppingWidgetReceiver"
+            android:exported="true"
+            android:label="Shopping">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/shopping_widget_info" />
+        </receiver>
+
         <!-- WorkManager is initialized on demand by HomeApplication (Configuration.Provider)
              so that Hilt can inject workers. Remove the default startup initializer. -->
         <provider
