@@ -24,8 +24,12 @@ sealed interface SyncResult {
  *
  * Tables are pushed in [syncs] order (stores before the items that point at them), and all
  * pushes happen before any pull, so a pull never overwrites an edit that was about to upload.
+ * After pulling, stores with the same name are merged ([StoreMerger]).
  */
-class SyncEngine internal constructor(private val syncs: List<EntitySync>) {
+class SyncEngine internal constructor(
+    private val syncs: List<EntitySync>,
+    private val storeMerger: StoreMerger? = null,
+) {
 
     @Inject
     constructor(
@@ -39,11 +43,17 @@ class SyncEngine internal constructor(private val syncs: List<EntitySync>) {
             StoreSync(api, storeDao, syncStateDao, transaction),
             ShoppingItemSync(api, itemDao, syncStateDao, transaction),
         ),
+        StoreMerger(storeDao, itemDao, transaction),
     )
 
     suspend fun sync(): SyncResult = try {
         for (sync in syncs) sync.push()
         for (sync in syncs) sync.pull()
+        // Pulling can reveal a store the other device created under the same name; merging
+        // it makes new edits, which are uploaded right away.
+        if (storeMerger?.mergeDuplicates() == true) {
+            for (sync in syncs) sync.push()
+        }
         SyncResult.Success
     } catch (e: CancellationException) {
         throw e

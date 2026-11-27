@@ -164,6 +164,23 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `stores with the same name are merged into the one with the smallest id`() = runTest {
+        val (keep, drop) = listOf(UUID.randomUUID(), UUID.randomUUID()).sortedBy { it.toString() }
+        server.putStore(keep, "Aldi", sortOrder = 0, modifiedAt = t0) // created on the other device
+        storeDao.upsert(StoreEntity(drop.toString(), "aldi ", modifiedAt = t0, pendingSync = true))
+        dao.upsert(local(idA, "Milk", modifiedAt = t0, pending = true).copy(storeId = drop.toString()))
+
+        engine.sync()
+
+        assertEquals(listOf(keep.toString()), storeDao.getActive().map { it.id })
+        assertEquals(keep.toString(), dao.getById(idA.toString())!!.storeId)
+        // The merge is uploaded in the same pass.
+        assertTrue(server.stores[drop]!!.deleted)
+        assertEquals(keep, server.items[idA]!!.storeId)
+        assertFalse(dao.getById(idA.toString())!!.pendingSync)
+    }
+
+    @Test
     fun `reports offline and keeps edits pending when the network is down`() = runTest {
         dao.upsert(local(idA, "Milk", modifiedAt = t0, pending = true))
         server.offline = true
