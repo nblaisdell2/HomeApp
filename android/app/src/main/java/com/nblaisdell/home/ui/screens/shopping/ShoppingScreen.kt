@@ -69,7 +69,7 @@ fun ShoppingContent(
                     items(state.items, key = { it.id }) { item ->
                         ListItem(
                             headlineContent = { Text(item.name) },
-                            supportingContent = item.store?.let { { Text(it) } },
+                            supportingContent = item.note?.let { { Text(it) } },
                             trailingContent = {
                                 IconButton(onClick = { onDelete(item.id) }) {
                                     Icon(Icons.Outlined.Delete, contentDescription = "Remove ${item.name}")
@@ -131,8 +131,8 @@ private fun ShoppingPreview() {
             ShoppingUiState(
                 loading = false,
                 items = listOf(
-                    ShoppingListItem("1", "Milk", "Aldi"),
-                    ShoppingListItem("2", "Coffee filters", null),
+                    ShoppingListItem("1", "Milk", note = "2 gallons"),
+                    ShoppingListItem("2", "Coffee filters"),
                 ),
                 syncStatus = SyncStatus.Live,
             ),

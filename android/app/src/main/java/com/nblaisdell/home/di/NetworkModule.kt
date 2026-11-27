@@ -41,10 +41,14 @@ object NetworkModule {
     @Singleton
     fun provideBaseUrl(): HttpUrl = BuildConfig.API_BASE_URL.toHttpUrl()
 
-    /** The generated client's JSON setup (registers the UUID adapter, ignores unknown keys). */
+    /**
+     * The generated client's JSON setup (registers the UUID adapter, ignores unknown keys), but
+     * leaving unset optional fields out instead of sending `"field": null`. Fastify coerces null
+     * to "" for strings, which fails uuid/date-time formats.
+     */
     @Provides
     @Singleton
-    fun provideJson(): Json = Serializer.kotlinxSerializationJson
+    fun provideJson(): Json = Json(Serializer.kotlinxSerializationJson) { explicitNulls = false }
 
     @Provides
     @Singleton

@@ -8,24 +8,31 @@ type Db = Pool | ClientBase
  * from change_seq. Writes are therefore serialized, so versions become visible in commit
  * order and a client reading `version > cursor` can never skip a change that committed late.
  * Write volume is tiny (one person, two devices), so the serialization costs nothing.
+ * Shared by every synced table (see stores.repository.ts).
  */
 export const CHANGE_LOCK_KEY = 4_242_001
 
 interface Row {
   id: string
   name: string
-  store: string | null
+  store_id: string | null
+  aisle: string | null
+  note: string | null
+  purchased_at: Date | null
   modified_at: Date
   deleted: boolean
   version: number
 }
 
-const COLUMNS = 'id, name, store, modified_at, deleted, version'
+const COLUMNS = 'id, name, store_id, aisle, note, purchased_at, modified_at, deleted, version'
 
 const toItem = (r: Row): ShoppingItem => ({
   id: r.id,
   name: r.name,
-  ...(r.store != null ? { store: r.store } : {}),
+  ...(r.store_id != null ? { storeId: r.store_id } : {}),
+  ...(r.aisle != null ? { aisle: r.aisle } : {}),
+  ...(r.note != null ? { note: r.note } : {}),
+  ...(r.purchased_at != null ? { purchasedAt: r.purchased_at.toISOString() } : {}),
   modifiedAt: r.modified_at.toISOString(),
   deleted: r.deleted,
   version: r.version,
@@ -44,9 +51,10 @@ export async function listChangesSince(db: Db, since: number, limit: number) {
 }
 
 /**
- * Inserts or updates an item using last-write-wins on `modifiedAt`. Must run inside a
- * transaction (the advisory lock is transaction-scoped). An edit that is older than (or the
- * same age as) what the server holds is ignored, and the server's current item is returned.
+ * Inserts or updates an item using last-write-wins on `modifiedAt`. Every write is a full
+ * replacement, so an omitted optional field is cleared. Must run inside a transaction (the
+ * advisory lock is transaction-scoped). An edit that is older than (or the same age as) what
+ * the server holds is ignored, and the server's current item is returned.
  */
 export async function upsertItem(
   client: PoolClient,
@@ -56,17 +64,29 @@ export async function upsertItem(
   await client.query('SELECT pg_advisory_xact_lock($1)', [CHANGE_LOCK_KEY])
 
   const written = await client.query<Row>(
-    `INSERT INTO shopping_items (id, name, store, modified_at, deleted)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO shopping_items (id, name, store_id, aisle, note, purchased_at, modified_at, deleted)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (id) DO UPDATE
         SET name = EXCLUDED.name,
-            store = EXCLUDED.store,
+            store_id = EXCLUDED.store_id,
+            aisle = EXCLUDED.aisle,
+            note = EXCLUDED.note,
+            purchased_at = EXCLUDED.purchased_at,
             modified_at = EXCLUDED.modified_at,
             deleted = EXCLUDED.deleted,
             version = nextval('change_seq')
       WHERE shopping_items.modified_at < EXCLUDED.modified_at
      RETURNING ${COLUMNS}`,
-    [id, input.name, input.store ?? null, input.modifiedAt, input.deleted ?? false],
+    [
+      id,
+      input.name,
+      input.storeId ?? null,
+      input.aisle ?? null,
+      input.note ?? null,
+      input.purchasedAt ?? null,
+      input.modifiedAt,
+      input.deleted ?? false,
+    ],
   )
   if (written.rows[0]) return { applied: true, item: toItem(written.rows[0]) }
 

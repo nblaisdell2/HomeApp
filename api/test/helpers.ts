@@ -19,7 +19,7 @@ export async function buildTestApp(): Promise<App> {
 }
 
 export async function resetData(app: App) {
-  await app.pg.query('TRUNCATE shopping_items, devices')
+  await app.pg.query('TRUNCATE shopping_items, stores, devices')
 }
 
 /** Creates a device and returns its Authorization header. */

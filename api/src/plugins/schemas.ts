@@ -5,6 +5,10 @@ import {
   ShoppingItemChanges,
   ShoppingItemUpsert,
   ShoppingItemUpsertResult,
+  Store,
+  StoreChanges,
+  StoreUpsert,
+  StoreUpsertResult,
 } from '../schemas/shopping.js'
 
 /** Registers shared schemas app-wide so routes can $ref them and the OpenAPI spec names them. */
@@ -18,6 +22,10 @@ export default fp(
       ShoppingItemUpsert,
       ShoppingItemUpsertResult,
       ShoppingItemChanges,
+      Store,
+      StoreUpsert,
+      StoreUpsertResult,
+      StoreChanges,
     ]) {
       app.addSchema(schema)
     }

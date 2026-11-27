@@ -2,8 +2,10 @@ package com.nblaisdell.home.ui.screens.shopping
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nblaisdell.home.data.repository.ItemDraft
 import com.nblaisdell.home.data.repository.ShoppingListItem
 import com.nblaisdell.home.data.repository.ShoppingRepository
+import com.nblaisdell.home.data.repository.StoreRepository
 import com.nblaisdell.home.data.sync.SyncStatus
 import com.nblaisdell.home.data.sync.SyncStatusTracker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,6 +29,7 @@ data class ShoppingUiState(
 @HiltViewModel
 class ShoppingViewModel @Inject constructor(
     private val repository: ShoppingRepository,
+    private val storeRepository: StoreRepository,
     tracker: SyncStatusTracker,
 ) : ViewModel() {
 
@@ -37,10 +40,13 @@ class ShoppingViewModel @Inject constructor(
 
     fun add(name: String, store: String?) {
         if (name.isBlank()) return
-        viewModelScope.launch { repository.add(name, store) }
+        viewModelScope.launch {
+            val storeId = store?.takeIf { it.isNotBlank() }?.let { storeRepository.findOrCreate(it) }
+            repository.add(ItemDraft(name, storeId))
+        }
     }
 
     fun delete(id: String) {
-        viewModelScope.launch { repository.delete(id) }
+        viewModelScope.launch { repository.delete(listOf(id)) }
     }
 }
